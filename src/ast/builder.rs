@@ -178,9 +178,20 @@ pub enum SimpleWordKind<C> {
     Colon,
 }
 
+/// An indicator to the builder what delimiter was parsed.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum HeredocDelimiterKind<C> {
+    /// A regular delimiter.
+    Simple(C),
+    /// Delimiter enclosed in double quotes.
+    DoubleQuoted(C),
+    /// Delimiter enclosed in single quotes.
+    SingleQuoted(C),
+}
+
 /// Represents redirecting a command's file descriptors.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum RedirectKind<W> {
+pub enum RedirectKind<W, D> {
     /// Open a file for reading, e.g. `[n]< file`.
     Read(Option<u16>, W),
     /// Open a file for writing after truncating, e.g. `[n]> file`.
@@ -192,7 +203,7 @@ pub enum RedirectKind<W> {
     /// Open a file for writing, failing if the `noclobber` shell option is set, e.g. `[n]>| file`.
     Clobber(Option<u16>, W),
     /// Lines contained in the source that should be provided by as input to a file descriptor.
-    Heredoc(Option<u16>, W),
+    Heredoc(Option<u16>, W, D),
     /// Duplicate a file descriptor for reading, e.g. `[n]<& [n|-]`.
     DupRead(Option<u16>, W),
     /// Duplicate a file descriptor for writing, e.g. `[n]>& [n|-]`.
@@ -264,6 +275,8 @@ pub trait Builder {
     type CompoundCommand;
     /// The type which represents shell words, which can be command names or arguments.
     type Word;
+    /// The type which represents heredoc delimiters
+    type HeredocDelimiter;
     /// The type which represents a file descriptor redirection.
     type Redirect;
     /// A type for returning custom parse/build errors.
@@ -443,11 +456,23 @@ pub trait Builder {
     /// * kind: the type of word that was parsed
     fn word(&mut self, kind: ComplexWordKind<Self::Command>) -> Result<Self::Word, Self::Error>;
 
+    /// Invoked when a heredoc delimiter is parsed.
+    ///
+    /// # Arguments
+    /// * kind: the type of redirect that was parsed
+    fn heredoc_delimiter(
+        &mut self,
+        kind: HeredocDelimiterKind<String>,
+    ) -> Result<Self::HeredocDelimiter, Self::Error>;
+
     /// Invoked when a redirect is parsed.
     ///
     /// # Arguments
     /// * kind: the type of redirect that was parsed
-    fn redirect(&mut self, kind: RedirectKind<Self::Word>) -> Result<Self::Redirect, Self::Error>;
+    fn redirect(
+        &mut self,
+        kind: RedirectKind<Self::Word, Self::HeredocDelimiter>,
+    ) -> Result<Self::Redirect, Self::Error>;
 }
 
 macro_rules! impl_builder_body {
@@ -458,6 +483,7 @@ macro_rules! impl_builder_body {
         type PipeableCommand = $T::PipeableCommand;
         type CompoundCommand = $T::CompoundCommand;
         type Word = $T::Word;
+        type HeredocDelimiter = $T::HeredocDelimiter;
         type Redirect = $T::Redirect;
         type Error = $T::Error;
 
@@ -571,9 +597,16 @@ macro_rules! impl_builder_body {
             (**self).word(kind)
         }
 
+        fn heredoc_delimiter(
+            &mut self,
+            kind: HeredocDelimiterKind<String>,
+        ) -> Result<Self::HeredocDelimiter, Self::Error> {
+            (**self).heredoc_delimiter(kind)
+        }
+
         fn redirect(
             &mut self,
-            kind: RedirectKind<Self::Word>,
+            kind: RedirectKind<Self::Word, Self::HeredocDelimiter>,
         ) -> Result<Self::Redirect, Self::Error> {
             (**self).redirect(kind)
         }

@@ -29,6 +29,7 @@ impl Builder for EmptyBuilder {
     type PipeableCommand = ();
     type CompoundCommand = ();
     type Word = ();
+    type HeredocDelimiter = ();
     type Redirect = ();
     type Error = Void;
 
@@ -132,7 +133,17 @@ impl Builder for EmptyBuilder {
         Ok(())
     }
 
-    fn redirect(&mut self, _kind: RedirectKind<Self::Word>) -> Result<Self::Redirect, Self::Error> {
+    fn heredoc_delimiter(
+        &mut self,
+        _kind: HeredocDelimiterKind<String>,
+    ) -> Result<Self::Redirect, Self::Error> {
+        Ok(())
+    }
+
+    fn redirect(
+        &mut self,
+        _kind: RedirectKind<Self::Word, Self::HeredocDelimiter>,
+    ) -> Result<Self::Redirect, Self::Error> {
         Ok(())
     }
 

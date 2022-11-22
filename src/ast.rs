@@ -154,14 +154,28 @@ pub enum SimpleWord<L, P, S> {
     Colon,
 }
 
+/// Type alias for the default `HeredocDelimiter` representation.
+pub type DefaultHeredocDelimiter = HeredocDelimiter<String>;
+
+/// Represents a heredoc delimiter.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum HeredocDelimiter<L> {
+    /// A regular identifier.
+    Simple(L),
+    /// A double quoted identifier.
+    DoubleQuoted(L),
+    /// A single quoted identifier.
+    SingleQuoted(L),
+}
+
 /// Type alias for the default `Redirect` representation.
-pub type DefaultRedirect = Redirect<TopLevelWord<String>>;
+pub type DefaultRedirect = Redirect<TopLevelWord<String>, HeredocDelimiter<String>>;
 
 /// Represents redirecting a command's file descriptors.
 ///
 /// Generic over the representation of a shell word.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Redirect<W> {
+pub enum Redirect<W, D> {
     /// Open a file for reading, e.g. `[n]< file`.
     Read(Option<u16>, W),
     /// Open a file for writing after truncating, e.g. `[n]> file`.
@@ -173,7 +187,7 @@ pub enum Redirect<W> {
     /// Open a file for writing, failing if the `noclobber` shell option is set, e.g. `[n]>| file`.
     Clobber(Option<u16>, W),
     /// Lines contained in the source that should be provided by as input to a file descriptor.
-    Heredoc(Option<u16>, W),
+    Heredoc(Option<u16>, W, D),
     /// Duplicate a file descriptor for reading, e.g. `[n]<& [n|-]`.
     DupRead(Option<u16>, W),
     /// Duplicate a file descriptor for writing, e.g. `[n]>& [n|-]`.
@@ -229,7 +243,7 @@ pub type AtomicCommandList<T, W, C> =
 /// using `Rc` wrappers around function declarations.
 pub type ShellPipeableCommand<T, W, C> = PipeableCommand<
     T,
-    Box<SimpleCommand<T, W, Redirect<W>>>,
+    Box<SimpleCommand<T, W, Redirect<W, HeredocDelimiter<T>>>>,
     Box<ShellCompoundCommand<T, W, C>>,
     Rc<ShellCompoundCommand<T, W, C>>,
 >;
@@ -238,7 +252,7 @@ pub type ShellPipeableCommand<T, W, C> = PipeableCommand<
 /// using `Arc` wrappers around function declarations.
 pub type AtomicShellPipeableCommand<T, W, C> = PipeableCommand<
     T,
-    Box<SimpleCommand<T, W, Redirect<W>>>,
+    Box<SimpleCommand<T, W, Redirect<W, HeredocDelimiter<T>>>>,
     Box<ShellCompoundCommand<T, W, C>>,
     Arc<ShellCompoundCommand<T, W, C>>,
 >;
@@ -302,7 +316,8 @@ pub enum PipeableCommand<N, S, C, F> {
 }
 
 /// A type alias for the default hiearchy for representing compound shell commands.
-pub type ShellCompoundCommand<T, W, C> = CompoundCommand<CompoundCommandKind<T, W, C>, Redirect<W>>;
+pub type ShellCompoundCommand<T, W, C> =
+    CompoundCommand<CompoundCommandKind<T, W, C>, Redirect<W, HeredocDelimiter<T>>>;
 
 /// Type alias for the default `CompoundCommandKind` representation.
 pub type DefaultCompoundCommand =
@@ -396,8 +411,11 @@ pub enum RedirectOrCmdWord<R, W> {
 }
 
 /// Type alias for the default `SimpleCommand` representation.
-pub type DefaultSimpleCommand =
-    SimpleCommand<String, TopLevelWord<String>, Redirect<TopLevelWord<String>>>;
+pub type DefaultSimpleCommand = SimpleCommand<
+    String,
+    TopLevelWord<String>,
+    Redirect<TopLevelWord<String>, HeredocDelimiter<String>>,
+>;
 
 /// The simplest possible command: an executable with arguments,
 /// environment variable assignments, and redirections.

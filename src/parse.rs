@@ -1097,9 +1097,12 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
         };
 
         let word = self.builder.word(body)?;
+        let delim = self
+            .builder
+            .heredoc_delimiter(builder::HeredocDelimiterKind::Simple(delim))?;
         Ok(self
             .builder
-            .redirect(builder::RedirectKind::Heredoc(src_fd, word))?)
+            .redirect(builder::RedirectKind::Heredoc(src_fd, word, delim))?)
     }
 
     /// Parses a whitespace delimited chunk of text, honoring space quoting rules,
@@ -2060,13 +2063,13 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
 
         macro_rules! missing_in {
             () => {
-                |_| ParseError::IncompleteCmd(CASE, start_pos, IN, self.iter.pos());
+                |_| ParseError::IncompleteCmd(CASE, start_pos, IN, self.iter.pos())
             };
         }
 
         macro_rules! missing_esac {
             () => {
-                |_| ParseError::IncompleteCmd(CASE, start_pos, ESAC, self.iter.pos());
+                |_| ParseError::IncompleteCmd(CASE, start_pos, ESAC, self.iter.pos())
             };
         }
 

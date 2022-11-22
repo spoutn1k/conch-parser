@@ -89,6 +89,10 @@ pub fn cmd_from_simple(cmd: DefaultSimpleCommand) -> TopLevelCommand<String> {
     }))
 }
 
+pub fn delim(s: &str) -> HeredocDelimiter<String> {
+    HeredocDelimiter::Simple(String::from(s))
+}
+
 pub fn src(byte: usize, line: usize, col: usize) -> SourcePos {
     SourcePos { byte, line, col }
 }

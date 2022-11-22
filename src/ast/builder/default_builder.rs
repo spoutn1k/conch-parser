@@ -59,14 +59,15 @@ macro_rules! default_builder {
         impl<T> Copy for $Builder<T> {}
 
         impl<T: From<String>> Builder for $Builder<T> {
-            type Command         = $Cmd<T>;
-            type CommandList     = AndOrList<Self::ListableCommand>;
-            type ListableCommand = ListableCommand<Self::PipeableCommand>;
-            type PipeableCommand = $PipeableCmd<T, Self::Word, Self::Command>;
-            type CompoundCommand = ShellCompoundCommand<T, Self::Word, Self::Command>;
-            type Word            = $Word<T>;
-            type Redirect        = Redirect<Self::Word>;
-            type Error           = Void;
+            type Command            = $Cmd<T>;
+            type CommandList        = AndOrList<Self::ListableCommand>;
+            type ListableCommand    = ListableCommand<Self::PipeableCommand>;
+            type PipeableCommand    = $PipeableCmd<T, Self::Word, Self::Command>;
+            type CompoundCommand    = ShellCompoundCommand<T, Self::Word, Self::Command>;
+            type Word               = $Word<T>;
+            type HeredocDelimiter   = HeredocDelimiter<T>;
+            type Redirect           = Redirect<Self::Word, Self::HeredocDelimiter>;
+            type Error              = Void;
 
             fn complete_command(&mut self,
                                 pre_cmd_comments: Vec<Newline>,
@@ -182,8 +183,15 @@ macro_rules! default_builder {
                 self.0.word(kind)
             }
 
+            fn heredoc_delimiter(&mut self,
+                    kind: HeredocDelimiterKind<String>)
+                -> Result<Self::HeredocDelimiter, Self::Error>
+            {
+                self.0.heredoc_delimiter(kind)
+            }
+
             fn redirect(&mut self,
-                        kind: RedirectKind<Self::Word>)
+                        kind: RedirectKind<Self::Word, Self::HeredocDelimiter>)
                 -> Result<Self::Redirect, Self::Error>
             {
                 self.0.redirect(kind)
@@ -264,7 +272,7 @@ impl<T, W, C, F> CoreBuilder<T, W, C, F> {
 
 type BuilderPipeableCommand<T, W, C, F> = PipeableCommand<
     T,
-    Box<SimpleCommand<T, W, Redirect<W>>>,
+    Box<SimpleCommand<T, W, Redirect<W, HeredocDelimiter<T>>>>,
     Box<ShellCompoundCommand<T, W, C>>,
     F,
 >;
@@ -282,7 +290,8 @@ where
     type PipeableCommand = BuilderPipeableCommand<T, W, C, F>;
     type CompoundCommand = ShellCompoundCommand<T, Self::Word, Self::Command>;
     type Word = W;
-    type Redirect = Redirect<Self::Word>;
+    type HeredocDelimiter = HeredocDelimiter<T>;
+    type Redirect = Redirect<Self::Word, Self::HeredocDelimiter>;
     type Error = Void;
 
     /// Constructs a `Command::Job` node with the provided inputs if the command
@@ -685,15 +694,35 @@ where
         Ok(word.into())
     }
 
+    fn heredoc_delimiter(
+        &mut self,
+        kind: HeredocDelimiterKind<String>,
+    ) -> Result<Self::HeredocDelimiter, Self::Error> {
+        let delim = match kind {
+            HeredocDelimiterKind::Simple(ident) => HeredocDelimiter::Simple(ident.into()),
+            HeredocDelimiterKind::SingleQuoted(ident) => {
+                HeredocDelimiter::SingleQuoted(ident.into())
+            }
+            HeredocDelimiterKind::DoubleQuoted(ident) => {
+                HeredocDelimiter::DoubleQuoted(ident.into())
+            }
+        };
+
+        Ok(delim)
+    }
+
     /// Constructs a `ast::Redirect` from the provided input.
-    fn redirect(&mut self, kind: RedirectKind<Self::Word>) -> Result<Self::Redirect, Self::Error> {
+    fn redirect(
+        &mut self,
+        kind: RedirectKind<Self::Word, Self::HeredocDelimiter>,
+    ) -> Result<Self::Redirect, Self::Error> {
         let io = match kind {
             RedirectKind::Read(fd, path) => Redirect::Read(fd, path),
             RedirectKind::Write(fd, path) => Redirect::Write(fd, path),
             RedirectKind::ReadWrite(fd, path) => Redirect::ReadWrite(fd, path),
             RedirectKind::Append(fd, path) => Redirect::Append(fd, path),
             RedirectKind::Clobber(fd, path) => Redirect::Clobber(fd, path),
-            RedirectKind::Heredoc(fd, body) => Redirect::Heredoc(fd, body),
+            RedirectKind::Heredoc(fd, body, delim) => Redirect::Heredoc(fd, body, delim),
             RedirectKind::DupRead(src, dst) => Redirect::DupRead(src, dst),
             RedirectKind::DupWrite(src, dst) => Redirect::DupWrite(src, dst),
         };
