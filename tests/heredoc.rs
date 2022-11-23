@@ -18,7 +18,22 @@ fn cat_heredoc(
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(fd, word(body), delim(delimiter))),
+            RedirectOrCmdWord::Redirect(Heredoc(fd, word(body), delim_simple(delimiter))),
+        ],
+    })
+}
+
+fn cat_heredoc_quoted(
+    fd: Option<u16>,
+    body: &'static str,
+    delimiter: &'static str,
+    unquoted: &'static str,
+) -> TopLevelCommand<String> {
+    cmd_from_simple(SimpleCommand {
+        redirects_or_env_vars: vec![],
+        redirects_or_cmd_words: vec![
+            RedirectOrCmdWord::CmdWord(word("cat")),
+            RedirectOrCmdWord::Redirect(Heredoc(fd, word(body), delim_quoted(delimiter, unquoted))),
         ],
     })
 }
@@ -109,12 +124,25 @@ fn test_heredoc_valid_unquoted_delimeter_should_expand_body() {
                     subst(ParameterSubstitution::Command(vec![cmd("foo")])),
                     lit("\n"),
                 ])),
-                delim("eof"),
+                delim_simple("eof"),
             )),
         ],
     }));
 
-    let literal = Some(cat_heredoc(None, "$$ ${#!} `foo`\n", "eof"));
+    let literal_backticked = Some(cat_heredoc_quoted(
+        None,
+        "$$ ${#!} `foo`\n",
+        "`eof`",
+        "`eof`",
+    ));
+    let literal_single_quoted = Some(cat_heredoc_quoted(None, "$$ ${#!} `foo`\n", "'eof'", "eof"));
+    let literal_double_quoted = Some(cat_heredoc_quoted(
+        None,
+        "$$ ${#!} `foo`\n",
+        "\"eof\"",
+        "eof",
+    ));
+    let literal_backslashed = Some(cat_heredoc_quoted(None, "$$ ${#!} `foo`\n", "e\\of", "eof"));
 
     assert_eq!(
         expanded,
@@ -123,27 +151,25 @@ fn test_heredoc_valid_unquoted_delimeter_should_expand_body() {
             .unwrap()
     );
     assert_eq!(
-        literal,
+        literal_single_quoted,
         make_parser("cat <<'eof'\n$$ ${#!} `foo`\neof")
             .complete_command()
             .unwrap()
     );
-    /*
     assert_eq!(
-        literal,
+        literal_backticked,
         make_parser("cat <<`eof`\n$$ ${#!} `foo`\n`eof`")
             .complete_command()
             .unwrap()
     );
-    */
     assert_eq!(
-        literal,
+        literal_double_quoted,
         make_parser("cat <<\"eof\"\n$$ ${#!} `foo`\neof")
             .complete_command()
             .unwrap()
     );
     assert_eq!(
-        literal,
+        literal_backslashed,
         make_parser("cat <<e\\of\n$$ ${#!} `foo`\neof")
             .complete_command()
             .unwrap()
@@ -174,7 +200,7 @@ fn test_heredoc_valid_leading_tab_removal_works_if_dash_immediately_after_dless(
 
 #[test]
 fn test_heredoc_valid_unquoted_backslashes_in_delimeter_disappear() {
-    let correct = Some(cat_heredoc(None, "hello\n", "e ff"));
+    let correct = Some(cat_heredoc_quoted(None, "hello\n", "e\\ f\\f", "e ff"));
     assert_eq!(
         correct,
         make_parser("cat <<e\\ f\\f\nhello\ne ff")
@@ -185,7 +211,7 @@ fn test_heredoc_valid_unquoted_backslashes_in_delimeter_disappear() {
 
 #[test]
 fn test_heredoc_valid_balanced_single_quotes_in_delimeter() {
-    let correct = Some(cat_heredoc(None, "hello\n", "eof"));
+    let correct = Some(cat_heredoc_quoted(None, "hello\n", "e'o'f", "eof"));
     assert_eq!(
         correct,
         make_parser("cat <<e'o'f\nhello\neof")
@@ -196,7 +222,12 @@ fn test_heredoc_valid_balanced_single_quotes_in_delimeter() {
 
 #[test]
 fn test_heredoc_valid_balanced_double_quotes_in_delimeter() {
-    let correct = Some(cat_heredoc(None, "hello\n", "e\\o${foo}f"));
+    let correct = Some(cat_heredoc_quoted(
+        None,
+        "hello\n",
+        "e\"\\o${foo}\"f",
+        "e\\o${foo}f",
+    ));
     assert_eq!(
         correct,
         make_parser("cat <<e\"\\o${foo}\"f\nhello\ne\\o${foo}f")
@@ -207,7 +238,12 @@ fn test_heredoc_valid_balanced_double_quotes_in_delimeter() {
 
 #[test]
 fn test_heredoc_valid_balanced_backticks_in_delimeter() {
-    let correct = Some(cat_heredoc(None, "hello\n", "e`\\o$`\\${f}`"));
+    let correct = Some(cat_heredoc_quoted(
+        None,
+        "hello\n",
+        "e`\\o$`\\${f}`",
+        "e`\\o$`\\${f}`",
+    ));
     assert_eq!(
         correct,
         make_parser("cat <<e`\\o\\$\\`\\\\${f}`\nhello\ne`\\o$`\\${f}`")
@@ -255,7 +291,7 @@ fn test_heredoc_valid_skip_past_newlines_in_single_quotes() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(single_quoted("\n")),
             RedirectOrCmdWord::CmdWord(word("arg")),
         ],
@@ -274,7 +310,7 @@ fn test_heredoc_valid_skip_past_newlines_in_double_quotes() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(double_quoted("\n")),
             RedirectOrCmdWord::CmdWord(word("arg")),
         ],
@@ -293,7 +329,7 @@ fn test_heredoc_valid_skip_past_newlines_in_backticks() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(word_subst(ParameterSubstitution::Command(vec![cmd(
                 "echo",
             )]))),
@@ -325,7 +361,7 @@ fn test_heredoc_valid_skip_past_newlines_in_cmd_subst() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(word_subst(ParameterSubstitution::Command(vec![cmd(
                 "foo",
             )]))),
@@ -346,7 +382,7 @@ fn test_heredoc_valid_skip_past_newlines_in_param_subst() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(word_subst(ParameterSubstitution::Assign(
                 false,
                 Parameter::Var(String::from("foo")),
@@ -369,7 +405,7 @@ fn test_heredoc_valid_skip_past_escaped_newlines() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(word("arg")),
         ],
     }));
@@ -383,7 +419,12 @@ fn test_heredoc_valid_skip_past_escaped_newlines() {
 
 #[test]
 fn test_heredoc_valid_double_quoted_delim_keeps_backslashe_except_after_specials() {
-    let correct = Some(cat_heredoc(None, "here\n", "\\EOF$`\"\\"));
+    let correct = Some(cat_heredoc_quoted(
+        None,
+        "here\n",
+        "\"\\EOF$`\"\\\"",
+        "\\EOF$`\"\\",
+    ));
     assert_eq!(
         correct,
         make_parser("cat <<\"\\EOF\\$\\`\\\"\\\\\"\nhere\n\\EOF$`\"\\\n")
@@ -394,7 +435,12 @@ fn test_heredoc_valid_double_quoted_delim_keeps_backslashe_except_after_specials
 
 #[test]
 fn test_heredoc_valid_unquoting_only_removes_outer_quotes_and_backslashes() {
-    let correct = Some(cat_heredoc(None, "here\n", "EOF${ asdf}(hello'){o}"));
+    let correct = Some(cat_heredoc_quoted(
+        None,
+        "here\n",
+        "EOF${ 'asdf'}(\"hello'\"){\\o}",
+        "EOF${ asdf}(hello'){o}",
+    ));
     assert_eq!(
         correct,
         make_parser("cat <<EOF${ 'asdf'}(\"hello'\"){\\o}\nhere\nEOF${ asdf}(hello'){o}")
@@ -409,7 +455,7 @@ fn test_heredoc_valid_delimeter_can_be_followed_by_carriage_return_newline() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(word("arg")),
         ],
     }));
@@ -424,7 +470,7 @@ fn test_heredoc_valid_delimeter_can_be_followed_by_carriage_return_newline() {
         redirects_or_env_vars: vec![],
         redirects_or_cmd_words: vec![
             RedirectOrCmdWord::CmdWord(word("cat")),
-            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\r\n"), delim("EOF"))),
+            RedirectOrCmdWord::Redirect(Heredoc(None, word("here\r\n"), delim_simple("EOF"))),
             RedirectOrCmdWord::CmdWord(word("arg")),
         ],
     }));

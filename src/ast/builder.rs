@@ -183,10 +183,8 @@ pub enum SimpleWordKind<C> {
 pub enum HeredocDelimiterKind<C> {
     /// A regular delimiter.
     Simple(C),
-    /// Delimiter enclosed in double quotes.
-    DoubleQuoted(C),
-    /// Delimiter enclosed in single quotes.
-    SingleQuoted(C),
+    /// A quoted delimiter.
+    Quoted(C, C),
 }
 
 /// Represents redirecting a command's file descriptors.

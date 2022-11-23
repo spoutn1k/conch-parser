@@ -162,10 +162,8 @@ pub type DefaultHeredocDelimiter = HeredocDelimiter<String>;
 pub enum HeredocDelimiter<L> {
     /// A regular identifier.
     Simple(L),
-    /// A double quoted identifier.
-    DoubleQuoted(L),
-    /// A single quoted identifier.
-    SingleQuoted(L),
+    /// A quoted identifier, containing the quoted then unquoted version.
+    Quoted(L, L),
 }
 
 /// Type alias for the default `Redirect` representation.

@@ -700,11 +700,8 @@ where
     ) -> Result<Self::HeredocDelimiter, Self::Error> {
         let delim = match kind {
             HeredocDelimiterKind::Simple(ident) => HeredocDelimiter::Simple(ident.into()),
-            HeredocDelimiterKind::SingleQuoted(ident) => {
-                HeredocDelimiter::SingleQuoted(ident.into())
-            }
-            HeredocDelimiterKind::DoubleQuoted(ident) => {
-                HeredocDelimiter::DoubleQuoted(ident.into())
+            HeredocDelimiterKind::Quoted(quoted_ident, ident) => {
+                HeredocDelimiter::Quoted(quoted_ident.into(), ident.into())
             }
         };
 

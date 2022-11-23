@@ -884,26 +884,37 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
 
         let mut iter = TokenIter::new(delim_tokens.into_iter());
         let mut quoted = false;
-        let mut delim = String::new();
+        // Delimiter as it appears in the source
+        let mut delim_raw = String::new();
+        // Delimiter as it is interpreted and looked for in the heredoc body
+        let mut delim_sleek = String::new();
+
         loop {
             let start_pos = iter.pos();
             match iter.next() {
                 Some(Backslash) => {
                     quoted = true;
+                    delim_raw.push_str(Backslash.as_str());
                     if let Some(t) = iter.next() {
-                        delim.push_str(t.as_str())
+                        delim_raw.push_str(t.as_str());
+                        delim_sleek.push_str(t.as_str());
                     }
                 }
 
                 Some(SingleQuote) => {
                     quoted = true;
+                    delim_raw.push_str(SingleQuote.as_str());
                     for t in iter.single_quoted(start_pos) {
-                        delim.push_str(try_map!(t).as_str());
+                        let contents: String = try_map!(t).as_str().into();
+                        delim_raw.push_str(&contents);
+                        delim_sleek.push_str(&contents);
                     }
+                    delim_raw.push_str(SingleQuote.as_str());
                 }
 
                 Some(DoubleQuote) => {
                     quoted = true;
+                    delim_raw.push_str(DoubleQuote.as_str());
                     let mut iter = iter.double_quoted(start_pos);
                     while let Some(next) = iter.next() {
                         match try_map!(next) {
@@ -912,20 +923,32 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
                                 | Some(Ok(tok @ Backtick))
                                 | Some(Ok(tok @ DoubleQuote))
                                 | Some(Ok(tok @ Backslash))
-                                | Some(Ok(tok @ Newline)) => delim.push_str(tok.as_str()),
+                                | Some(Ok(tok @ Newline)) => {
+                                    delim_raw.push_str(tok.as_str());
+                                    delim_sleek.push_str(tok.as_str());
+                                }
 
                                 Some(t) => {
                                     let t = try_map!(t);
-                                    delim.push_str(Backslash.as_str());
-                                    delim.push_str(t.as_str());
+                                    delim_raw.push_str(Backslash.as_str());
+                                    delim_raw.push_str(t.as_str());
+                                    delim_sleek.push_str(Backslash.as_str());
+                                    delim_sleek.push_str(t.as_str());
                                 }
 
-                                None => delim.push_str(Backslash.as_str()),
+                                None => {
+                                    delim_raw.push_str(Backslash.as_str());
+                                    delim_sleek.push_str(Backslash.as_str());
+                                }
                             },
 
-                            t => delim.push_str(t.as_str()),
+                            t => {
+                                delim_raw.push_str(t.as_str());
+                                delim_sleek.push_str(t.as_str());
+                            }
                         }
                     }
+                    delim_raw.push_str(DoubleQuote.as_str());
                 }
 
                 // Having backticks in a heredoc delimeter is something the major shells all
@@ -951,26 +974,34 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
                 // be expanded, and backslashes are only removed if followed by \, $, or `.
                 Some(Backtick) => {
                     quoted = true;
-                    delim.push_str(Backtick.as_str());
+                    delim_raw.push_str(Backtick.as_str());
+                    delim_sleek.push_str(Backtick.as_str());
                     for t in iter.backticked_remove_backslashes(start_pos) {
-                        delim.push_str(try_map!(t).as_str());
+                        let contents: String = try_map!(t).as_str().into();
+                        delim_raw.push_str(&contents);
+                        delim_sleek.push_str(&contents);
                     }
-                    delim.push_str(Backtick.as_str());
+                    delim_raw.push_str(Backtick.as_str());
+                    delim_sleek.push_str(Backtick.as_str());
                 }
 
-                Some(t) => delim.push_str(t.as_str()),
+                Some(t) => {
+                    delim_raw.push_str(t.as_str());
+                    delim_sleek.push_str(t.as_str());
+                }
                 None => break,
             }
         }
 
-        if delim.is_empty() {
+        if delim_raw.is_empty() {
             return Err(self.make_unexpected_err());
         }
 
-        delim.shrink_to_fit();
-        let (delim, quoted) = (delim, quoted);
-        let delim_len = delim.len();
-        let delim_r = String::from_iter(vec![delim.as_str(), "\r"]);
+        delim_raw.shrink_to_fit();
+        delim_sleek.shrink_to_fit();
+
+        let delim_sleek_len = delim_sleek.len();
+        let delim_r = String::from_iter(vec![delim_sleek.as_str(), "\r"]);
         let delim_r_len = delim_r.len();
 
         // Here we will fast-forward to the next newline and capture the heredoc's
@@ -1049,9 +1080,9 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
                         // lex \r\n as a Newline token, doing so would complicate keeping track
                         // of positions in the source, as we could have one or two byte Newlines,
                         // or two different tokens to deal with.
-                        if line_len == delim_len || line_len == delim_r_len {
+                        if line_len == delim_sleek_len || line_len == delim_r_len {
                             let line_str = concat_tokens(&line);
-                            if line_str == delim || line_str == delim_r {
+                            if line_str == delim_sleek || line_str == delim_r {
                                 break 'heredoc;
                             }
                         }
@@ -1071,6 +1102,17 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
 
         self.iter
             .buffer_tokens_to_yield_first(saved_tokens, saved_pos);
+
+        let delim = if quoted {
+            self.builder
+                .heredoc_delimiter(builder::HeredocDelimiterKind::Quoted(
+                    delim_raw,
+                    delim_sleek,
+                ))?
+        } else {
+            self.builder
+                .heredoc_delimiter(builder::HeredocDelimiterKind::Simple(delim_sleek))?
+        };
 
         let body = if quoted {
             let body = heredoc.into_iter().flat_map(|(t, _)| t).collect::<Vec<_>>();
@@ -1097,9 +1139,6 @@ impl<I: Iterator<Item = Token>, B: Builder> Parser<I, B> {
         };
 
         let word = self.builder.word(body)?;
-        let delim = self
-            .builder
-            .heredoc_delimiter(builder::HeredocDelimiterKind::Simple(delim))?;
         Ok(self
             .builder
             .redirect(builder::RedirectKind::Heredoc(src_fd, word, delim))?)
